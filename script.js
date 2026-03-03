@@ -463,7 +463,7 @@ class ScheduleManager {
         
         // 初始化Firebase同步管理器
         try {
-            this.firebaseManager = new FirebaseManager();
+            // this.firebaseManager = new FirebaseManager(); // 暂时禁用Firebase
             console.log("Firebase同步管理器已初始化");
         } catch (error) {
             console.error("Firebase同步管理器初始化失败:", error);
