@@ -7,25 +7,6 @@
     <link rel="stylesheet" href="styles.css?v=1.3">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
-    
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js"></script>
-    
-    <!-- Firebase配置 -->
-    <script>
-        // Firebase配置 - 昨昨天店排班系统
-        const firebaseConfig = {
-            apiKey: "AIzaSyD2hc5qWutucgOcpg02dEsEUXiKFnldt_0",
-            authDomain: "mmk1-4a2b7.firebaseapp.com",
-            projectId: "mmk1-4a2b7",
-            storageBucket: "mmk1-4a2b7.firebasestorage.app",
-            messagingSenderId: "282681938781",
-            appId: "1:282681938781:web:e747384067992fedeb0eb4",
-            measurementId: "G-D4C56586EG"
-        };
-    </script>
 </head>
 <body>
     <div class="container">
@@ -37,7 +18,6 @@
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <label for="currentStoreSelect" style="font-weight: bold; color: #667eea;">🏪 当前店铺：</label>
-                    <span id="syncStatus" class="sync-status" style="margin-left: 10px; padding: 4px 8px; border-radius: 4px; font-size: 12px; background: #f0f0f0;">🟡 同步中...</span>
                     <select id="currentStoreSelect" class="store-select" style="padding: 8px 12px; border: 2px solid #667eea; border-radius: 6px; font-size: 14px; min-width: 150px;">
                         <option value="">加载中...</option>
                     </select>
@@ -1857,7 +1837,6 @@
         </div>
     </div>
 
-    <script src="firebase-manager.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

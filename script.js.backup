@@ -455,20 +455,9 @@ class IndexedDBManager {
 }
 
 class ScheduleManager {
-    // Firebase同步管理器
-    firebaseManager = null;
     constructor() {
         // 初始化IndexedDB
         this.dbManager = new IndexedDBManager();
-        
-        // 初始化Firebase同步管理器
-        try {
-            this.firebaseManager = new FirebaseManager();
-            console.log("Firebase同步管理器已初始化");
-        } catch (error) {
-            console.error("Firebase同步管理器初始化失败:", error);
-            this.firebaseManager = null;
-        }
         this.dbManager.init().catch(err => {
             console.error('IndexedDB初始化失败，将使用localStorage:', err);
         });
@@ -1498,13 +1487,6 @@ ${info.usagePercent > 80 ? '⚠️ 存储空间紧张，建议清理！' : '✅ 
         });
 
         // 开始时间变化时自动设置结束时间
-        
-        // 定时更新同步状态
-        setInterval(() => {
-            if (this.firebaseManager) {
-                this.firebaseManager.showSyncStatus();
-            }
-        }, 5000); // 每5秒更新一次
         document.getElementById('startTime').addEventListener('change', (e) => {
             this.autoSetEndTime(e.target.value);
         });
@@ -3346,15 +3328,6 @@ ${photoStatus}
 
     // 保存数据到IndexedDB（优先）和localStorage（备用）
     async saveSchedules() {
-        // 保存到Firebase云端（如果启用）
-        if (this.firebaseManager) {
-            try {
-                await this.firebaseManager.syncSchedules(this.schedules, this.currentStoreId);
-                console.log("排班数据已同步到Firebase云端");
-            } catch (firebaseError) {
-                console.warn("Firebase同步失败（不影响本地保存）:", firebaseError);
-            }
-        }
         try {
             // 优先保存到IndexedDB（容量大，不受限制）
             try {
@@ -3534,21 +3507,7 @@ ${photoStatus}
     }
 
     // 同步加载方法（保持向后兼容）
-    async loadSchedules() {
-        // 尝试从Firebase云端加载数据
-        if (this.firebaseManager) {
-            try {
-                const cloudSchedules = await this.firebaseManager.loadSchedules(this.currentStoreId);
-                if (cloudSchedules loadSchedules() {loadSchedules() { cloudSchedules.length > 0) {
-                    console.log(`从Firebase云端加载了 ${cloudSchedules.length} 条排班记录`);
-                    // 保存到本地存储
-                    localStorage.setItem(this.getStorageKey("schedules"), JSON.stringify(cloudSchedules));
-                    return cloudSchedules;
-                }
-            } catch (firebaseError) {
-                console.warn("从Firebase加载数据失败，使用本地数据:", firebaseError);
-            }
-        }
+    loadSchedules() {
         // 如果IndexedDB已经加载了数据，直接返回
         if (this.schedules && this.schedules.length > 0) {
             return this.schedules;
