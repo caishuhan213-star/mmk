@@ -3462,7 +3462,8 @@ ${photoStatus}
 
     // 从本地存储加载数据
     // 异步加载排班数据（优先从IndexedDB，如果没有则从localStorage并迁移）
-    async loadSchedulesAsync() {
+
+async loadSchedulesAsync() {
         try {
             // 优先从IndexedDB加载
             const dbSchedules = await this.dbManager.loadSchedules(this.currentStoreId);
@@ -3487,7 +3488,6 @@ ${photoStatus}
                     if (Array.isArray(localSchedules) && localSchedules.length > 0) {
                         // 迁移到IndexedDB
                         const migrationFlag = localStorage.getItem('indexeddb_migrated_' + this.currentStoreId);
-                this.projects.forEach(project => {
                         if (migrationFlag !== 'true') {
                             try {
                                 await this.dbManager.saveSchedules(localSchedules, this.currentStoreId);
@@ -3506,19 +3506,6 @@ ${photoStatus}
             console.error('异步加载排班数据失败:', error);
         }
     }
-
-    // 同步加载方法（保持向后兼容）
-    loadSchedules() {
-        // 如果IndexedDB已经加载了数据，直接返回
-        if (this.schedules && this.schedules.length > 0) {
-            return this.schedules;
-        }
-        
-        // 否则从localStorage加载
-        const saved = localStorage.getItem(this.getStorageKey('schedules'));
-        return saved ? JSON.parse(saved) : [];
-    }
-
     // 从本地存储加载项目数据
     loadProjects() {
         const saved = localStorage.getItem(this.getStorageKey('projects'));
