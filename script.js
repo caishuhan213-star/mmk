@@ -3546,6 +3546,22 @@ async loadSchedulesAsync() {
 
     // 更新项目选择器
     updateProjectSelectors() {
+        const selectors = [
+            document.getElementById('projectName'),
+            document.getElementById('editProjectName')
+        ];
+
+        selectors.forEach(selector => {
+            if (selector) {
+                // 保留第一个选项（请选择项目）
+                const firstOption = selector.querySelector('option[value=""]');
+                selector.innerHTML = '';
+                if (firstOption) {
+                    selector.appendChild(firstOption);
+                }
+
+                // 添加项目选项
+                this.projects.forEach(project => {
                     const option = document.createElement('option');
                     option.value = project.name;
                     option.textContent = project.name;
@@ -3555,53 +3571,7 @@ async loadSchedulesAsync() {
         });
     }
 
-    // 打开添加项目模态框
-    openAddProjectModal() {
-        this.editingProjectId = null;
-        document.getElementById('projectModalTitle').textContent = '添加项目';
-        document.getElementById('projectForm').reset();
-        document.getElementById('projectModal').style.display = 'block';
-    }
-
-    // 打开项目管理列表模态框
-    openProjectListModal() {
-        this.renderProjectListModal();
-        document.getElementById('projectListModal').style.display = 'block';
-    }
-
-    // 渲染项目管理列表模态框
-    renderProjectListModal() {
-        const container = document.getElementById('projectListContainer');
-        container.innerHTML = '';
-
-        if (this.projects.length === 0) {
             container.innerHTML = '<p class="no-projects">暂无项目，请添加项目</p>';
-            return;
-        }
-
-        this.projects.forEach(project => {
-            const projectItem = document.createElement('div');
-            projectItem.className = 'project-list-item';
-            projectItem.innerHTML = `
-                <div class="project-details">
-                    <h4>${project.name}</h4>
-                    <p>${project.description || '暂无描述'}</p>
-                    <small>创建时间: ${this.formatDateTime(project.createdAt)}</small>
-                </div>
-                <div class="project-actions">
-                    <button class="btn btn-edit" onclick="scheduleManager.editProject('${project.id}')">编辑</button>
-                    <button class="btn btn-danger" onclick="scheduleManager.deleteProject('${project.id}')">删除</button>
-                </div>
-            `;
-            container.appendChild(projectItem);
-        });
-    }
-
-    // 保存项目
-    saveProject() {
-        const formData = {
-            name: document.getElementById('projectNameInput').value.trim(),
-            description: document.getElementById('projectDescription').value.trim()
         };
 
         if (!formData.name) {
