@@ -3597,8 +3597,57 @@ async loadSchedulesAsync() {
         this.renderProjectListModal();
         document.getElementById('projectListModal').style.display = 'block';
     }
-
+    }
     // 渲染项目管理列表模态框
+    renderProjectListModal() {
+        const container = document.getElementById('projectListContainer');
+        container.innerHTML = '';
+
+        if (this.projects.length === 0) {
+            container.innerHTML = '<p class="no-projects">暂无项目，请添加项目</p>';
+            return;
+        }
+
+        this.projects.forEach(project => {
+            const projectItem = document.createElement('div');
+            projectItem.className = 'project-list-item';
+            projectItem.innerHTML = `
+                <div class="project-details">
+                    <h4>${project.name}</h4>
+                    <p>${project.description || '暂无描述'}</p>
+                    <small>创建时间: ${this.formatDateTime(project.createdAt)}</small>
+                </div>
+                <div class="project-actions">
+                    <button class="btn btn-edit" onclick="scheduleManager.editProject('${project.id}')">编辑</button>
+                    <button class="btn btn-danger" onclick="scheduleManager.deleteProject('${project.id}')">删除</button>
+                </div>
+            `;
+            container.appendChild(projectItem);
+        });
+    }
+
+    // 保存项目
+    saveProject() {
+        const formData = {
+            name: document.getElementById('projectNameInput').value.trim(),
+            description: document.getElementById('projectDescription').value.trim()
+        };
+
+        if (!formData.name) {
+            alert('请输入项目名称');
+            return;
+        }
+
+        // 检查项目名称是否已存在（编辑时排除当前项目）
+        const existingProject = this.projects.find(p => 
+            p.name === formData.name && p.id !== this.editingProjectId
+        );
+
+        if (existingProject) {
+            alert('项目名称已存在，请使用其他名称');
+            return;
+        }
+
         if (this.editingProjectId) {
             // 编辑现有项目
             const projectIndex = this.projects.findIndex(p => p.id === this.editingProjectId);
@@ -3650,51 +3699,6 @@ async loadSchedulesAsync() {
             return;
         }
 
-        // 检查是否有排班记录使用此项目
-        const usedInSchedules = this.schedules.some(schedule => schedule.projectName === project.name);
-        
-        if (usedInSchedules) {
-            alert(`项目"${project.name}"正在被排班记录使用，无法删除。请先修改相关排班记录。`);
-            return;
-        }
-
-        if (confirm(`确定要删除项目"${project.name}"吗？该项目的薪资档位设置也将被删除。`)) {
-            this.projects = this.projects.filter(p => p.id !== id);
-            this.saveProjects();
-            
-            // 删除该项目的薪资档位数据
-            if (this.salaryTiers[id]) {
-                delete this.salaryTiers[id];
-                this.saveSalaryTiersData();
-            }
-            
-            // 如果当前选择的是被删除的项目，清空选择
-            if (this.currentSalaryProject === id) {
-                this.currentSalaryProject = null;
-                this.currentSalaryTier = null;
-                document.getElementById('salaryProjectSelect').value = '';
-                this.renderSalaryTiers();
-                this.renderSalaryEmployeeAssignment();
-            }
-            
-            this.renderProjectList();
-            this.updateProjectSelectors();
-            this.updateSalaryProjectSelector(); // 更新薪资管理的项目选择器
-            this.showSuccessMessage('项目删除成功！');
-        }
-    }
-
-    // 关闭项目模态框
-    closeProjectModal() {
-        document.getElementById('projectModal').style.display = 'none';
-        this.editingProjectId = null;
-        document.getElementById('projectForm').reset();
-    }
-
-    // 关闭项目列表模态框
-    closeProjectListModal() {
-        document.getElementById('projectListModal').style.display = 'none';
-    }
 
     // 从本地存储加载员工数据
     // 加载员工数据（优先从IndexedDB，如果没有则从localStorage并迁移）
