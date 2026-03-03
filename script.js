@@ -3487,6 +3487,7 @@ ${photoStatus}
                     if (Array.isArray(localSchedules) && localSchedules.length > 0) {
                         // 迁移到IndexedDB
                         const migrationFlag = localStorage.getItem('indexeddb_migrated_' + this.currentStoreId);
+                this.projects.forEach(project => {
                         if (migrationFlag !== 'true') {
                             try {
                                 await this.dbManager.saveSchedules(localSchedules, this.currentStoreId);
@@ -3507,21 +3508,7 @@ ${photoStatus}
     }
 
     // 同步加载方法（保持向后兼容）
-    async loadSchedules() {
-        // 尝试从Firebase云端加载数据
-        if (this.firebaseManager) {
-            try {
-                const cloudSchedules = await this.firebaseManager.loadSchedules(this.currentStoreId);
-                if (cloudSchedules loadSchedules() {loadSchedules() { cloudSchedules.length > 0) {
-                    console.log(`从Firebase云端加载了 ${cloudSchedules.length} 条排班记录`);
-                    // 保存到本地存储
-                    localStorage.setItem(this.getStorageKey("schedules"), JSON.stringify(cloudSchedules));
-                    return cloudSchedules;
-                }
-            } catch (firebaseError) {
-                console.warn("从Firebase加载数据失败，使用本地数据:", firebaseError);
-            }
-        }
+    loadSchedules() {
         // 如果IndexedDB已经加载了数据，直接返回
         if (this.schedules && this.schedules.length > 0) {
             return this.schedules;
@@ -3572,22 +3559,6 @@ ${photoStatus}
 
     // 更新项目选择器
     updateProjectSelectors() {
-        const selectors = [
-            document.getElementById('projectName'),
-            document.getElementById('editProjectName')
-        ];
-
-        selectors.forEach(selector => {
-            if (selector) {
-                // 保留第一个选项（请选择项目）
-                const firstOption = selector.querySelector('option[value=""]');
-                selector.innerHTML = '';
-                if (firstOption) {
-                    selector.appendChild(firstOption);
-                }
-
-                // 添加项目选项
-                this.projects.forEach(project => {
                     const option = document.createElement('option');
                     option.value = project.name;
                     option.textContent = project.name;
