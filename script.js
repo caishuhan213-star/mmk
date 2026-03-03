@@ -3597,7 +3597,6 @@ async loadSchedulesAsync() {
         this.renderProjectListModal();
         document.getElementById('projectListModal').style.display = 'block';
     }
-    }
     // 渲染项目管理列表模态框
     renderProjectListModal() {
         const container = document.getElementById('projectListContainer');
