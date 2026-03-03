@@ -3527,11 +3527,6 @@ ${photoStatus}
                 } catch (e) {
                     console.error('解析localStorage数据失败:', e);
                 }
-            }
-        } catch (error) {
-            console.error('异步加载排班数据失败:', error);
-        }
-    }
 
     // 同步加载方法（保持向后兼容）
     async loadSchedules() {
@@ -3539,7 +3534,7 @@ ${photoStatus}
         if (this.firebaseManager) {
             try {
                 const cloudSchedules = await this.firebaseManager.loadSchedules(this.currentStoreId);
-                if (cloudSchedules loadSchedules() {loadSchedules() { cloudSchedules.length > 0) {
+                if (cloudSchedules && cloudSchedules.length > 0) {
                     console.log(`从Firebase云端加载了 ${cloudSchedules.length} 条排班记录`);
                     // 保存到本地存储
                     localStorage.setItem(this.getStorageKey("schedules"), JSON.stringify(cloudSchedules));
@@ -3549,6 +3544,7 @@ ${photoStatus}
                 console.warn("从Firebase加载数据失败，使用本地数据:", firebaseError);
             }
         }
+        
         // 如果IndexedDB已经加载了数据，直接返回
         if (this.schedules && this.schedules.length > 0) {
             return this.schedules;
@@ -3558,7 +3554,6 @@ ${photoStatus}
         const saved = localStorage.getItem(this.getStorageKey('schedules'));
         return saved ? JSON.parse(saved) : [];
     }
-
     // 从本地存储加载项目数据
     loadProjects() {
         const saved = localStorage.getItem(this.getStorageKey('projects'));
