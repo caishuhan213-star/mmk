@@ -3587,15 +3587,6 @@ async loadSchedulesAsync() {
     // 打开添加项目模态框
     openAddProjectModal() {
         this.editingProjectId = null;
-                    <button class="btn btn-danger" onclick="scheduleManager.deleteProject('${project.id}')">删除</button>
-                    selector.appendChild(option);
-                });
-            }
-        });
-
-    // 打开添加项目模态框
-    openAddProjectModal() {
-        this.editingProjectId = null;
         document.getElementById('projectModalTitle').textContent = '添加项目';
         document.getElementById('projectForm').reset();
         document.getElementById('projectModal').style.display = 'block';
