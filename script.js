@@ -3592,7 +3592,6 @@ async loadSchedulesAsync() {
                 });
             }
         });
-    }
 
     // 打开添加项目模态框
     openAddProjectModal() {
