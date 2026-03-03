@@ -3567,28 +3567,38 @@ async loadSchedulesAsync() {
                     option.textContent = project.name;
                     selector.appendChild(option);
                 });
+
+                selector.innerHTML = '';
+                if (firstOption) {
+                    selector.appendChild(firstOption);
+                }
+
+                // 添加项目选项
+                this.projects.forEach(project => {
+                    const option = document.createElement('option');
+                    option.value = project.name;
+                    option.textContent = project.name;
+                    selector.appendChild(option);
+                });
             }
         });
     }
 
-            container.innerHTML = '<p class="no-projects">暂无项目，请添加项目</p>';
-        };
+    // 打开添加项目模态框
+    openAddProjectModal() {
+        this.editingProjectId = null;
+        document.getElementById('projectModalTitle').textContent = '添加项目';
+        document.getElementById('projectForm').reset();
+        document.getElementById('projectModal').style.display = 'block';
+    }
 
-        if (!formData.name) {
-            alert('请输入项目名称');
-            return;
-        }
+    // 打开项目管理列表模态框
+    openProjectListModal() {
+        this.renderProjectListModal();
+        document.getElementById('projectListModal').style.display = 'block';
+    }
 
-        // 检查项目名称是否已存在（编辑时排除当前项目）
-        const existingProject = this.projects.find(p => 
-            p.name === formData.name && p.id !== this.editingProjectId
-        );
-
-        if (existingProject) {
-            alert('项目名称已存在，请使用其他名称');
-            return;
-        }
-
+    // 渲染项目管理列表模态框
         if (this.editingProjectId) {
             // 编辑现有项目
             const projectIndex = this.projects.findIndex(p => p.id === this.editingProjectId);
