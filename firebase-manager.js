@@ -310,4 +310,109 @@ class FirebaseManager {
             return null;
         }
     }
+    
+    // ======================
+    // 通用同步方法（新增）
+    // ======================
+    
+    // 通用同步方法：同步任意集合到云端
+    async syncCollection(collectionName, dataArray, storeId = 'default') {
+        if (!this.syncEnabled || !this.user || !this.firestore || this.syncStatus !== 'ready') {
+            console.log(`同步未就绪，跳过${collectionName}云端同步`);
+            return false;
+        }
+        
+        console.log(`开始同步 ${dataArray.length} 条${collectionName}记录到云端...`);
+        
+        try {
+            const collectionRef = this.firestore.collection(`users/${this.user.uid}/stores/${storeId}/${collectionName}`);
+            
+            // 使用批处理
+            const batch = this.firestore.batch();
+            
+            // 添加所有文档
+            dataArray.forEach(item => {
+                const docRef = collectionRef.doc(item.id || this.generateId(item));
+                batch.set(docRef, {
+                    ...item,
+                    storeId: storeId,
+                    userId: this.user.uid,
+                    syncedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: Date.now()
+                });
+            });
+            
+            await batch.commit();
+            console.log(`✅ ${collectionName}数据同步成功: ${dataArray.length}条记录`);
+            return true;
+            
+        } catch (error) {
+            console.error(`❌ ${collectionName}数据同步失败:`, error);
+            return false;
+        }
+    }
+    
+    // 通用加载方法：从云端加载任意集合
+    async loadCollection(collectionName, storeId = 'default') {
+        if (!this.syncEnabled || !this.user || !this.firestore || this.syncStatus !== 'ready') {
+            console.log('同步未就绪，使用本地数据');
+            return null;
+        }
+        
+        try {
+            const collectionRef = this.firestore.collection(`users/${this.user.uid}/stores/${storeId}/${collectionName}`);
+            const querySnapshot = await collectionRef.get();
+            
+            const items = [];
+            querySnapshot.forEach(doc => {
+                const data = doc.data();
+                // 移除Firebase特有的字段
+                const { storeId: _, userId: __, syncedAt: ___, updatedAt: ____, ...item } = data;
+                items.push(item);
+            });
+            
+            console.log(`✅ 从云端加载${collectionName}数据: ${items.length}条记录`);
+            return items;
+            
+        } catch (error) {
+            console.error(`❌ 从云端加载${collectionName}数据失败:`, error);
+            return null;
+        }
+    }
+    
+    // 监听集合变化（实时同步）
+    subscribeToCollection(collectionName, storeId = 'default', callback) {
+        if (!this.syncEnabled || !this.user || !this.firestore || this.syncStatus !== 'ready') {
+            console.log('同步未就绪，无法监听');
+            return () => {};
+        }
+        
+        try {
+            const collectionRef = this.firestore.collection(`users/${this.user.uid}/stores/${storeId}/${collectionName}`);
+            
+            return collectionRef.onSnapshot((snapshot) => {
+                const changes = snapshot.docChanges();
+                if (changes.length > 0) {
+                    const updatedItems = changes.map(change => ({
+                        type: change.type, // 'added', 'modified', 'removed'
+                        id: change.doc.id,
+                        data: change.doc.data()
+                    }));
+                    callback(updatedItems);
+                }
+            });
+        } catch (error) {
+            console.error(`❌ 监听${collectionName}变化失败:`, error);
+            return () => {};
+        }
+    }
+    
+    // 生成ID（如果数据没有id字段）
+    generateId(item) {
+        // 如果有id字段，使用它
+        if (item.id) return item.id;
+        
+        // 否则生成一个基于时间和随机数的ID
+        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
 }

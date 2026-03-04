@@ -13,9 +13,13 @@ class IndexedDBManagerWithFirebase extends IndexedDBManager {
         this.syncEnabled = true;
         this.syncQueue = [];
         this.isSyncing = false;
+        this.realtimeListeners = new Map(); // 存储实时监听器
         
-        // 启动定时同步
-        this.startSyncInterval();
+        // 延迟启动同步和监听（等待Firebase初始化）
+        setTimeout(() => {
+            this.startSyncInterval();
+            this.startRealtimeListeners();
+        }, 3000);
     }
     
     // 启动定时同步
@@ -79,31 +83,68 @@ class IndexedDBManagerWithFirebase extends IndexedDBManager {
     // ======================
     
     async loadSchedules(storeId) {
+        return await this.loadFromCloud('schedules', storeId, super.loadSchedules.bind(this));
+    }
+    
+    async loadOperatingCosts(storeId) {
+        return await this.loadFromCloud('operatingCosts', storeId, super.loadOperatingCosts.bind(this));
+    }
+    
+    async loadAttendanceFees(storeId) {
+        return await this.loadFromCloud('attendanceFees', storeId, super.loadAttendanceFees.bind(this));
+    }
+    
+    async loadEmployees(storeId) {
+        return await this.loadFromCloud('employees', storeId, super.loadEmployees.bind(this));
+    }
+    
+    // 通用云加载方法
+    async loadFromCloud(collectionName, storeId, localLoader) {
         // 先从本地加载
-        const localSchedules = await super.loadSchedules(storeId);
+        const localData = await localLoader(storeId);
         
         // 如果Firebase就绪，尝试从云端加载更新
         if (this.syncEnabled && this.firebaseManager.syncStatus === 'ready') {
             try {
-                const cloudSchedules = await this.firebaseManager.loadSchedules(storeId);
-                if (cloudSchedules && cloudSchedules.length > 0) {
-                    console.log(`从云端加载到 ${cloudSchedules.length} 条排班记录`);
+                // 使用通用加载方法或特定方法
+                let cloudData = null;
+                if (this.firebaseManager.loadCollection) {
+                    cloudData = await this.firebaseManager.loadCollection(collectionName, storeId);
+                } else if (collectionName === 'schedules' && this.firebaseManager.loadSchedules) {
+                    cloudData = await this.firebaseManager.loadSchedules(storeId);
+                }
+                
+                if (cloudData && cloudData.length > 0) {
+                    console.log(`从云端加载到 ${cloudData.length} 条${collectionName}记录`);
                     
                     // 合并数据（简单的ID合并，云端优先）
-                    const merged = this.mergeData(localSchedules, cloudSchedules, 'id');
+                    const merged = this.mergeData(localData, cloudData, 'id');
                     
                     // 如果有变化，更新本地
-                    if (merged.length !== localSchedules.length) {
-                        await super.saveSchedules(merged, storeId);
+                    if (merged.length !== localData.length || JSON.stringify(merged) !== JSON.stringify(localData)) {
+                        console.log(`${collectionName}数据有变化，更新本地存储`);
+                        
+                        // 调用对应的保存方法更新本地
+                        const saveMethodMap = {
+                            'schedules': super.saveSchedules.bind(this),
+                            'operatingCosts': super.saveOperatingCosts.bind(this),
+                            'attendanceFees': super.saveAttendanceFees.bind(this),
+                            'employees': super.saveEmployees.bind(this)
+                        };
+                        
+                        if (saveMethodMap[collectionName]) {
+                            await saveMethodMap[collectionName](merged, storeId);
+                        }
+                        
                         return merged;
                     }
                 }
             } catch (error) {
-                console.error('从云端加载排班数据失败:', error);
+                console.error(`从云端加载${collectionName}数据失败:`, error);
             }
         }
         
-        return localSchedules;
+        return localData;
     }
     
     // ======================
@@ -140,16 +181,20 @@ class IndexedDBManagerWithFirebase extends IndexedDBManager {
             
             let success = false;
             
-            // 根据集合类型调用不同的同步方法
-            if (item.collection === 'schedules') {
+            // 使用通用同步方法处理所有集合类型
+            if (this.firebaseManager.syncCollection) {
+                // 使用新的通用方法
+                success = await this.firebaseManager.syncCollection(item.collection, item.data, item.storeId);
+            } else if (item.collection === 'schedules' && this.firebaseManager.syncSchedules) {
+                // 向后兼容：如果只有旧的syncSchedules方法
                 success = await this.firebaseManager.syncSchedules(item.data, item.storeId);
             }
-            // 其他集合类型可以在这里添加
+            // 其他集合类型会自动使用通用方法
             
             if (success) {
                 // 移除已同步的项
                 this.syncQueue.shift();
-                console.log('同步成功');
+                console.log(`✅ ${item.collection}同步成功`);
                 
                 // 继续处理下一个
                 setTimeout(() => {
@@ -159,11 +204,11 @@ class IndexedDBManagerWithFirebase extends IndexedDBManager {
                     }
                 }, 1000);
             } else {
-                console.warn('同步失败，稍后重试');
+                console.warn(`⚠️ ${item.collection}同步失败，稍后重试`);
                 this.isSyncing = false;
             }
         } catch (error) {
-            console.error('同步处理出错:', error);
+            console.error('❌ 同步处理出错:', error);
             this.isSyncing = false;
         }
     }
@@ -202,5 +247,125 @@ class IndexedDBManagerWithFirebase extends IndexedDBManager {
     async triggerSync() {
         console.log('手动触发同步');
         return this.processSyncQueue();
+    }
+    
+    // ======================
+    // 实时同步监听
+    // ======================
+    
+    // 启动实时监听器
+    startRealtimeListeners(storeId = 'default') {
+        if (!this.syncEnabled || !this.firebaseManager || this.firebaseManager.syncStatus !== 'ready') {
+            console.log('Firebase未就绪，延迟启动实时监听');
+            setTimeout(() => this.startRealtimeListeners(storeId), 5000);
+            return;
+        }
+        
+        console.log('🚀 启动Firebase实时监听器');
+        
+        // 监听排班数据变化
+        this.setupRealtimeListener('schedules', storeId, (changes) => {
+            console.log('📡 收到排班数据实时更新:', changes.length, '条变化');
+            this.handleRealtimeChanges('schedules', changes, storeId);
+        });
+        
+        // 监听员工数据变化
+        this.setupRealtimeListener('employees', storeId, (changes) => {
+            console.log('📡 收到员工数据实时更新:', changes.length, '条变化');
+            this.handleRealtimeChanges('employees', changes, storeId);
+        });
+        
+        // 监听运营成本变化
+        this.setupRealtimeListener('operatingCosts', storeId, (changes) => {
+            console.log('📡 收到运营成本实时更新:', changes.length, '条变化');
+            this.handleRealtimeChanges('operatingCosts', changes, storeId);
+        });
+        
+        // 监听坐班费用变化
+        this.setupRealtimeListener('attendanceFees', storeId, (changes) => {
+            console.log('📡 收到坐班费用实时更新:', changes.length, '条变化');
+            this.handleRealtimeChanges('attendanceFees', changes, storeId);
+        });
+    }
+    
+    // 设置单个集合的实时监听
+    setupRealtimeListener(collectionName, storeId, callback) {
+        if (!this.firebaseManager.subscribeToCollection) {
+            console.warn(`⚠️ FirebaseManager没有subscribeToCollection方法，无法监听${collectionName}`);
+            return;
+        }
+        
+        try {
+            const unsubscribe = this.firebaseManager.subscribeToCollection(collectionName, storeId, callback);
+            this.realtimeListeners.set(`${collectionName}_${storeId}`, unsubscribe);
+            console.log(`✅ ${collectionName}实时监听已启动`);
+        } catch (error) {
+            console.error(`❌ 启动${collectionName}实时监听失败:`, error);
+        }
+    }
+    
+    // 处理实时变化
+    async handleRealtimeChanges(collectionName, changes, storeId) {
+        if (changes.length === 0) return;
+        
+        console.log(`处理${collectionName}实时变化:`, changes.length, '条');
+        
+        // 获取当前本地数据
+        const localData = await this[`load${this.capitalizeFirst(collectionName)}`](storeId);
+        const dataMap = new Map(localData.map(item => [item.id, item]));
+        
+        // 应用变化
+        let hasChanges = false;
+        for (const change of changes) {
+            if (change.type === 'added' || change.type === 'modified') {
+                // 添加或更新数据
+                const cleanData = { ...change.data };
+                // 移除Firebase特有字段
+                delete cleanData.userId;
+                delete cleanData.storeId;
+                delete cleanData.syncedAt;
+                delete cleanData.updatedAt;
+                
+                dataMap.set(change.id, { id: change.id, ...cleanData });
+                hasChanges = true;
+            } else if (change.type === 'removed') {
+                // 删除数据
+                dataMap.delete(change.id);
+                hasChanges = true;
+            }
+        }
+        
+        // 如果有变化，保存到本地
+        if (hasChanges) {
+            const updatedData = Array.from(dataMap.values());
+            const saveMethod = this[`save${this.capitalizeFirst(collectionName)}`];
+            if (saveMethod) {
+                await saveMethod.call(this, updatedData, storeId);
+                console.log(`✅ ${collectionName}本地数据已更新`);
+                
+                // 如果页面有ScheduleManager实例，刷新显示
+                if (typeof scheduleManager !== 'undefined' && scheduleManager.refreshDisplay) {
+                    scheduleManager.refreshDisplay();
+                }
+            }
+        }
+    }
+    
+    // 工具方法：首字母大写
+    capitalizeFirst(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+    
+    // 清理监听器
+    cleanupListeners() {
+        this.realtimeListeners.forEach((unsubscribe, key) => {
+            try {
+                unsubscribe();
+                console.log(`清理监听器: ${key}`);
+            } catch (error) {
+                console.error(`清理监听器${key}失败:`, error);
+            }
+        });
+        this.realtimeListeners.clear();
     }
 }
