@@ -457,7 +457,7 @@ class IndexedDBManager {
 class ScheduleManager {
     constructor() {
         // 初始化IndexedDB
-        this.dbManager = new IndexedDBManager();
+        this.dbManager = new IndexedDBManagerWithFirebase();
         this.dbManager.init().catch(err => {
             console.error('IndexedDB初始化失败，将使用localStorage:', err);
         });
