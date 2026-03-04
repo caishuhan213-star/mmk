@@ -537,6 +537,9 @@ class ScheduleManager {
         
         this.checkBackupReminder();
         this.setupStoreContextUI();
+        
+        // 初始化自动导入
+        this.initAutoImport();
     }
 
     // 初始化店铺上下文
@@ -10459,6 +10462,366 @@ ${photoStatus}
         } else {
             alert('同步失败：没有成功同步到任何店铺！');
         }
+    }
+
+    // ======================
+    // 自动导入功能
+    // ======================
+
+    // 设置自动导入UI
+    setupAutoImportUI() {
+        // 找到数据分析转换区域
+        const analysisSection = document.querySelector('.data-analysis-section');
+        if (!analysisSection) {
+            console.warn('找不到数据分析区域，自动导入UI未添加');
+            return;
+        }
+
+        // 创建自动导入面板
+        const autoImportPanel = document.createElement('div');
+        autoImportPanel.className = 'auto-import-panel';
+        autoImportPanel.style.cssText = `
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        `;
+
+        autoImportPanel.innerHTML = `
+            <h3 style="margin: 0 0 15px 0; font-size: 1.2rem; display: flex; align-items: center; gap: 10px;">
+                <span>🤖 自动同步</span>
+                <span id="autoImportStatus" style="font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px;">未连接</span>
+            </h3>
+            
+            <p style="margin: 0 0 15px 0; font-size: 0.9rem; opacity: 0.9;">
+                每日自动同步排班数据，无需手动导入
+            </p>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                <button id="checkAutoImportBtn" class="btn" style="background: white; color: #667eea; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold;">
+                    🔄 检查更新
+                </button>
+                <button id="importLatestBtn" class="btn" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold;">
+                    📥 导入最新数据
+                </button>
+                <button id="autoImportToggle" class="btn" style="background: #FF9800; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold;">
+                    ⚡ 启用自动同步
+                </button>
+            </div>
+            
+            <div id="autoImportLog" style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto; margin-top: 10px; display: none;">
+                <div style="color: #ccc;">等待操作...</div>
+            </div>
+            
+            <div style="margin-top: 15px; font-size: 0.8rem; opacity: 0.8; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 10px;">
+                <div>数据源: <span id="dataSourceInfo">GitHub 仓库</span></div>
+                <div>最后检查: <span id="lastCheckTime">从未</span></div>
+                <div>最后导入: <span id="lastImportTime">从未</span></div>
+            </div>
+        `;
+
+        // 插入到分析区域之后
+        analysisSection.parentNode.insertBefore(autoImportPanel, analysisSection.nextSibling);
+
+        // 绑定事件
+        setTimeout(() => {
+            document.getElementById('checkAutoImportBtn').addEventListener('click', () => {
+                this.checkAutoImport(true); // true 表示显示日志
+            });
+            
+            document.getElementById('importLatestBtn').addEventListener('click', () => {
+                this.importLatestData();
+            });
+            
+            document.getElementById('autoImportToggle').addEventListener('click', (e) => {
+                this.toggleAutoImport(e.target);
+            });
+        }, 100);
+    }
+
+    // 添加日志
+    addAutoImportLog(message, type = 'info') {
+        const logContainer = document.getElementById('autoImportLog');
+        if (!logContainer) return;
+        
+        const colors = {
+            info: '#4FC3F7',
+            success: '#4CAF50',
+            warning: '#FF9800',
+            error: '#F44336'
+        };
+        
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.style.cssText = `margin: 2px 0; color: ${colors[type] || colors.info};`;
+        logEntry.textContent = `[${timestamp}] ${message}`;
+        
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+        
+        // 显示日志容器
+        logContainer.style.display = 'block';
+    }
+
+    // 检查自动导入
+    async checkAutoImport(showLog = false) {
+        if (showLog) {
+            this.addAutoImportLog('开始检查数据更新...', 'info');
+        }
+        
+        try {
+            // 数据源URL（GitHub Raw）
+            const dataUrl = 'https://raw.githubusercontent.com/caishuhan213-star/mmk/main/data/latest.txt';
+            const metaUrl = 'https://raw.githubusercontent.com/caishuhan213-star/mmk/main/data/meta.json';
+            
+            // 获取元数据
+            const metaResponse = await fetch(metaUrl + '?t=' + Date.now());
+            let meta = { lastUpdated: null, count: 0 };
+            
+            if (metaResponse.ok) {
+                meta = await metaResponse.json();
+            }
+            
+            // 更新UI状态
+            const lastCheckTime = document.getElementById('lastCheckTime');
+            if (lastCheckTime) {
+                lastCheckTime.textContent = new Date().toLocaleString();
+            }
+            
+            const statusEl = document.getElementById('autoImportStatus');
+            if (statusEl) {
+                statusEl.textContent = '🟢 已连接';
+                statusEl.style.background = 'rgba(76, 175, 80, 0.3)';
+            }
+            
+            if (showLog) {
+                if (meta.lastUpdated) {
+                    const lastUpdate = new Date(meta.lastUpdated).toLocaleString();
+                    this.addAutoImportLog(`数据源状态正常，最后更新: ${lastUpdate}，共 ${meta.count} 条记录`, 'success');
+                } else {
+                    this.addAutoImportLog('数据源状态正常，暂无可用数据', 'warning');
+                }
+            }
+            
+            return meta;
+            
+        } catch (error) {
+            console.error('检查自动导入失败:', error);
+            
+            const statusEl = document.getElementById('autoImportStatus');
+            if (statusEl) {
+                statusEl.textContent = '🔴 连接失败';
+                statusEl.style.background = 'rgba(244, 67, 54, 0.3)';
+            }
+            
+            if (showLog) {
+                this.addAutoImportLog(`连接失败: ${error.message}`, 'error');
+            }
+            
+            return null;
+        }
+    }
+
+    // 导入最新数据
+    async importLatestData() {
+        const logContainer = document.getElementById('autoImportLog');
+        if (logContainer) {
+            logContainer.innerHTML = '<div style="color: #ccc;">开始导入...</div>';
+            logContainer.style.display = 'block';
+        }
+        
+        this.addAutoImportLog('开始下载最新数据...', 'info');
+        
+        try {
+            // 数据源URL
+            const dataUrl = 'https://raw.githubusercontent.com/caishuhan213-star/mmk/main/data/latest.txt';
+            const metaUrl = 'https://raw.githubusercontent.com/caishuhan213-star/mmk/main/data/meta.json';
+            
+            // 获取元数据
+            const metaResponse = await fetch(metaUrl + '?t=' + Date.now());
+            if (!metaResponse.ok) {
+                throw new Error('无法获取元数据');
+            }
+            
+            const meta = await metaResponse.json();
+            
+            // 获取数据
+            const dataResponse = await fetch(dataUrl + '?t=' + Date.now());
+            if (!dataResponse.ok) {
+                throw new Error('无法获取数据');
+            }
+            
+            const dataText = await dataResponse.text();
+            const lines = dataText.split('\n').filter(line => line.trim());
+            
+            if (lines.length === 0) {
+                this.addAutoImportLog('数据为空，没有可导入的记录', 'warning');
+                return;
+            }
+            
+            this.addAutoImportLog(`下载成功，共 ${lines.length} 条记录`, 'success');
+            
+            // 使用今天的日期作为导入日期
+            const importDate = new Date().toISOString().split('T')[0];
+            
+            // 使用现有的批量导入逻辑
+            const newSchedules = [];
+            const errors = [];
+            
+            lines.forEach((line, index) => {
+                const lineNum = index + 1;
+                const trimmedLine = line.trim();
+                
+                if (!trimmedLine) return;
+                
+                try {
+                    const schedule = this.parseImportLine(trimmedLine, importDate);
+                    if (schedule) {
+                        newSchedules.push(schedule);
+                    } else {
+                        errors.push(`第${lineNum}行: 解析返回空结果`);
+                    }
+                } catch (error) {
+                    errors.push(`第${lineNum}行格式错误: ${error.message}`);
+                    console.error(`导入错误 - 第${lineNum}行:`, error, '原始数据:', trimmedLine);
+                }
+            });
+            
+            if (errors.length > 0) {
+                const errorMessage = '以下行格式错误，请检查：\n\n' + errors.join('\n\n');
+                this.addAutoImportLog(`发现 ${errors.length} 个格式错误`, 'error');
+                console.error('导入错误详情:', errors);
+                alert('部分数据格式错误，导入已取消。请检查数据格式。');
+                return;
+            }
+            
+            if (newSchedules.length === 0) {
+                this.addAutoImportLog('没有有效的数据可以导入', 'warning');
+                return;
+            }
+            
+            this.addAutoImportLog(`解析成功，准备导入 ${newSchedules.length} 条记录...`, 'info');
+            
+            // 检查时间冲突
+            const conflictFreeSchedules = [];
+            newSchedules.forEach(schedule => {
+                if (!this.hasTimeConflict(schedule)) {
+                    conflictFreeSchedules.push(schedule);
+                } else {
+                    this.addAutoImportLog(`跳过冲突记录: ${schedule.employeeName} ${schedule.startTime}-${schedule.endTime}`, 'warning');
+                }
+            });
+            
+            if (conflictFreeSchedules.length === 0) {
+                this.addAutoImportLog('所有记录都存在时间冲突，导入取消', 'warning');
+                return;
+            }
+            
+            // 确认导入
+            const confirmMessage = `准备导入 ${conflictFreeSchedules.length} 条记录：\n\n` +
+                conflictFreeSchedules.slice(0, 5).map(s => `• ${s.employeeName} - ${s.clientName} (¥${s.payment})`).join('\n') +
+                (conflictFreeSchedules.length > 5 ? `\n... 等共 ${conflictFreeSchedules.length} 条记录` : '') +
+                `\n\n确定要导入这些记录吗？`;
+            
+            if (!confirm(confirmMessage)) {
+                this.addAutoImportLog('用户取消导入', 'info');
+                return;
+            }
+            
+            // 批量添加记录
+            let successCount = 0;
+            conflictFreeSchedules.forEach(schedule => {
+                if (!this.hasTimeConflict(schedule)) {
+                    this.schedules.push(schedule);
+                    successCount++;
+                }
+            });
+            
+            // 保存数据
+            try {
+                await this.saveSchedules();
+                this.addAutoImportLog(`✅ 导入成功！成功导入 ${successCount} 条记录`, 'success');
+                
+                // 更新显示
+                this.renderTableWithCurrentFilter();
+                this.updateStats();
+                
+                // 更新最后导入时间
+                const lastImportTime = document.getElementById('lastImportTime');
+                if (lastImportTime) {
+                    lastImportTime.textContent = new Date().toLocaleString();
+                }
+                
+                // 显示成功消息
+                this.showSuccessMessage(`批量导入完成！成功导入 ${successCount} 条记录`);
+                
+            } catch (error) {
+                this.addAutoImportLog(`❌ 保存失败：${error.message}`, 'error');
+                alert(`❌ 保存失败：${error.message}\n\n建议清理存储空间后重试。`);
+            }
+            
+        } catch (error) {
+            console.error('导入失败:', error);
+            this.addAutoImportLog(`导入失败: ${error.message}`, 'error');
+            alert(`导入失败：${error.message}`);
+        }
+    }
+
+    // 切换自动导入状态
+    toggleAutoImport(button) {
+        const isEnabled = button.textContent.includes('启用');
+        
+        if (isEnabled) {
+            button.textContent = '⏸️ 禁用自动同步';
+            button.style.background = '#F44336';
+            this.addAutoImportLog('自动同步已启用，将每30分钟检查一次更新', 'success');
+            
+            // 启动定时检查
+            if (this.autoImportInterval) {
+                clearInterval(this.autoImportInterval);
+            }
+            
+            this.autoImportInterval = setInterval(() => {
+                this.checkAutoImport(false);
+                this.addAutoImportLog('定时检查数据更新...', 'info');
+            }, 30 * 60 * 1000); // 30分钟
+            
+            // 立即检查一次
+            setTimeout(() => this.checkAutoImport(false), 1000);
+            
+        } else {
+            button.textContent = '⚡ 启用自动同步';
+            button.style.background = '#FF9800';
+            this.addAutoImportLog('自动同步已禁用', 'info');
+            
+            // 清除定时器
+            if (this.autoImportInterval) {
+                clearInterval(this.autoImportInterval);
+                this.autoImportInterval = null;
+            }
+        }
+    }
+
+    // 初始化自动导入（在应用初始化时调用）
+    initAutoImport() {
+        // 延迟设置UI，确保页面完全加载
+        setTimeout(() => {
+            this.setupAutoImportUI();
+            
+            // 初始检查一次
+            this.checkAutoImport(false);
+            
+            // 恢复自动同步状态（从本地存储）
+            const autoImportEnabled = localStorage.getItem('autoImportEnabled') === 'true';
+            if (autoImportEnabled) {
+                const toggleBtn = document.getElementById('autoImportToggle');
+                if (toggleBtn) {
+                    setTimeout(() => toggleBtn.click(), 1000);
+                }
+            }
+        }, 2000);
     }
 }
 
