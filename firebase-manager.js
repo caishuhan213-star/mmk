@@ -146,18 +146,35 @@ class FirebaseManager {
             
             // 处理特定错误
             let errorMessage = "登录失败";
+            let detailedHelp = "";
+            
             if (error.code === 'auth/popup-blocked') {
-                errorMessage = "弹窗被阻止，请允许弹窗或使用重定向登录";
+                errorMessage = "弹窗被阻止，请允许弹窗";
+                detailedHelp = "或者尝试点击这里使用重定向登录";
             } else if (error.code === 'auth/popup-closed-by-user') {
                 errorMessage = "登录弹窗被关闭";
             } else if (error.code === 'auth/cancelled-popup-request') {
                 errorMessage = "登录请求被取消";
             } else if (error.code === 'auth/unauthorized-domain') {
-                errorMessage = "未授权的域名，请在Firebase控制台添加当前域名";
+                errorMessage = "域名未授权";
+                detailedHelp = "请在Firebase控制台 → Authentication → Sign-in method → Authorized domains 中添加: 'caishuhan213-star.github.io'（不带https://）";
             }
             
             this.syncStatus = 'auth-error';
             this.showErrorStatus(errorMessage);
+            
+            // 如果是域名错误，提供更多帮助
+            if (error.code === 'auth/unauthorized-domain') {
+                console.error('🔥 域名授权问题详情：');
+                console.error('1. 请访问：https://console.firebase.google.com/');
+                console.error('2. 选择项目：mmk1-4a2b7');
+                console.error('3. 进入 Authentication → Sign-in method');
+                console.error('4. 滚动到底部找到 "Authorized domains"');
+                console.error('5. 添加域名：caishuhan213-star.github.io（不带https://）');
+                console.error('6. 等待1-5分钟后重试');
+                console.error('7. 清除浏览器缓存（Ctrl+F5）');
+            }
+            
             this.updateLoginUI();
         }
     }
