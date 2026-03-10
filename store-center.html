@@ -485,6 +485,31 @@
                 </button>
             </div>
         </div>
+
+        <!-- Firebase同步诊断区域 -->
+        <div class="backup-section" style="margin-top: 30px; border: 2px solid #f59e0b;">
+            <div class="section-header">
+                <h2>🔧 Firebase同步诊断</h2>
+            </div>
+            <div class="backup-actions">
+                <button class="btn btn-warning" onclick="storeCenter.testFirestoreSync()">
+                    🔍 测试Firestore连接
+                </button>
+                <button class="btn btn-primary" onclick="storeCenter.forceSyncStores()">
+                    🔄 强制同步店铺数据
+                </button>
+                <button class="btn btn-secondary" onclick="console.log('Firebase状态:', window.firebaseManager ? window.firebaseManager.getSyncStatus() : '未找到'); alert('请查看控制台查看Firebase状态')">
+                    📊 查看Firebase状态
+                </button>
+            </div>
+            <div style="margin-top: 15px; padding: 15px; background: #fef3c7; border-radius: 8px; font-size: 0.9em;">
+                <p><strong>💡 诊断说明：</strong></p>
+                <p>1. <strong>测试Firestore连接</strong>：检查Firebase连接和权限</p>
+                <p>2. <strong>强制同步店铺数据</strong>：手动触发双向同步（云端↔本地）</p>
+                <p>3. <strong>查看Firebase状态</strong>：在控制台查看详细状态信息</p>
+                <p>4. <strong>按F12</strong>：打开开发者工具查看详细日志</p>
+            </div>
+        </div>
     </div>
 
     <!-- 添加/编辑店铺模态框 -->

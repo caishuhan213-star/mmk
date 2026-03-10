@@ -123,47 +123,157 @@ class StoreCenterManager {
 
     // 从云端同步店铺数据
     async syncStoresFromCloud() {
+        console.log('🔍 syncStoresFromCloud被调用');
+        console.log('🔍 同步状态检查:', {
+            syncEnabled: this.syncEnabled,
+            hasFirebaseManager: !!this.firebaseManager,
+            hasFirestore: this.firebaseManager ? !!this.firebaseManager.firestore : false,
+            firebaseManagerStatus: this.firebaseManager ? this.firebaseManager.getSyncStatus() : '未找到'
+        });
+        
         if (!this.syncEnabled || !this.firebaseManager || !this.firebaseManager.firestore) {
-            console.log('Firebase未就绪，跳过从云端加载店铺数据');
+            console.log('❌ Firebase未就绪，跳过从云端加载店铺数据');
             return;
         }
         
         try {
-            console.log('从Firebase加载店铺数据...');
+            console.log('🔄 从Firebase加载店铺数据...');
             const userId = this.firebaseManager.user.uid;
+            console.log('🔍 当前用户ID:', userId);
+            
             const storeRef = this.firebaseManager.firestore.collection(`users/${userId}/stores`);
+            console.log('🔍 Firestore路径:', `users/${userId}/stores`);
+            
+            console.log('🔍 开始查询Firestore...');
             const querySnapshot = await storeRef.get();
+            console.log('🔍 Firestore查询完成，结果:', {
+                empty: querySnapshot.empty,
+                size: querySnapshot.size,
+                docs: querySnapshot.docs.length
+            });
             
             if (querySnapshot.empty) {
-                console.log('云端没有店铺数据');
+                console.log('⚠️ 云端没有店铺数据');
                 return;
             }
             
             const cloudStores = [];
             querySnapshot.forEach(doc => {
                 const data = doc.data();
+                console.log(`📄 加载店铺文档 ${doc.id}:`, data);
                 // 移除Firebase特有的字段
                 const { userId, syncedAt, updatedAt, ...store } = data;
                 cloudStores.push(store);
             });
             
-            console.log(`从云端加载到 ${cloudStores.length} 个店铺`);
+            console.log(`✅ 从云端加载到 ${cloudStores.length} 个店铺:`, cloudStores.map(s => ({id: s.id, name: s.name})));
             
             // 合并数据（云端优先）
             const mergedStores = this.mergeStores(this.stores, cloudStores);
+            console.log('🔍 数据合并结果:', {
+                本地店铺数: this.stores.length,
+                云端店铺数: cloudStores.length,
+                合并后店铺数: mergedStores.length
+            });
             
             if (JSON.stringify(mergedStores) !== JSON.stringify(this.stores)) {
-                console.log('店铺数据有更新，更新本地存储');
+                console.log('🔄 店铺数据有更新，更新本地存储');
                 this.stores = mergedStores;
                 localStorage.setItem('stores', JSON.stringify(this.stores));
                 this.renderStoreGrid();
                 this.updateOverviewStats();
                 console.log('✅ 店铺数据已从云端更新');
             } else {
-                console.log('店铺数据与云端一致，无需更新');
+                console.log('ℹ️ 店铺数据与云端一致，无需更新');
             }
         } catch (error) {
             console.error('❌ 从云端加载店铺数据失败:', error);
+            console.error('🔍 错误详情:', {
+                code: error.code,
+                message: error.message,
+                stack: error.stack
+            });
+        }
+    }
+
+    // 手动测试Firestore同步
+    async testFirestoreSync() {
+        console.log('🔧 ======= 开始Firestore同步测试 =======');
+        
+        // 检查Firebase管理器
+        if (!window.firebaseManager) {
+            console.error('❌ 错误: window.firebaseManager 未定义');
+            alert('Firebase管理器未初始化，请刷新页面重试');
+            return;
+        }
+        
+        const fbManager = window.firebaseManager;
+        console.log('🔍 Firebase管理器状态:', fbManager.getSyncStatus());
+        
+        // 检查用户是否登录
+        if (!fbManager.user) {
+            console.error('❌ 错误: 用户未登录');
+            alert('请先登录Google账号');
+            return;
+        }
+        
+        const userId = fbManager.user.uid;
+        const userEmail = fbManager.user.email;
+        console.log('🔍 用户信息:', { userId, userEmail });
+        
+        // 测试Firestore连接
+        try {
+            console.log('🔄 测试Firestore写入...');
+            const testRef = fbManager.firestore.collection('_test').doc('connection');
+            await testRef.set({
+                test: true,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                userId: userId,
+                email: userEmail,
+                testTime: new Date().toISOString()
+            });
+            console.log('✅ Firestore写入测试成功');
+            
+            // 测试读取
+            console.log('🔄 测试Firestore读取...');
+            const doc = await testRef.get();
+            if (doc.exists) {
+                console.log('✅ Firestore读取测试成功:', doc.data());
+            } else {
+                console.error('❌ Firestore读取测试失败: 文档不存在');
+            }
+            
+            // 清理测试文档
+            await testRef.delete();
+            console.log('✅ 测试文档已清理');
+            
+            // 测试店铺数据同步
+            console.log('🔄 测试店铺数据同步...');
+            await this.syncStoresFromCloud();
+            
+            console.log('✅ ======= Firestore同步测试完成 =======');
+            alert('✅ 同步测试完成！请查看控制台查看详细结果');
+            
+        } catch (error) {
+            console.error('❌ Firestore测试失败:', error);
+            console.error('🔍 错误详情:', {
+                code: error.code,
+                message: error.message,
+                name: error.name
+            });
+            alert(`❌ 同步测试失败: ${error.message}\n\n请查看控制台获取详细错误信息`);
+        }
+    }
+
+    // 手动强制同步店铺数据
+    async forceSyncStores() {
+        console.log('🔧 强制同步店铺数据...');
+        if (this.firebaseManager && this.firebaseManager.user) {
+            await this.syncStoresToCloud();
+            await this.syncStoresFromCloud();
+            alert('✅ 强制同步完成！请查看控制台查看详细结果');
+        } else {
+            alert('❌ 无法强制同步：用户未登录或Firebase未初始化');
         }
     }
 
