@@ -408,6 +408,24 @@
             box-shadow: 0 5px 15px rgba(245, 158, 11, 0.3);
         }
     </style>
+    <!-- Firebase SDK 和配置 -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    
+    <!-- Firebase配置 -->
+    <script>
+        // Firebase配置 - 昨昨天店排班系统
+        const firebaseConfig = {
+            apiKey: "AIzaSyD2hc5qWutucgOcpg02dEsEUXiKFnldt_0",
+            authDomain: "mmk1-4a2b7.firebaseapp.com",
+            projectId: "mmk1-4a2b7",
+            storageBucket: "mmk1-4a2b7.firebasestorage.app",
+            messagingSenderId: "282681938781",
+            appId: "1:282681938781:web:e747384067992fedeb0eb4",
+            measurementId: "G-D4C56586EG"
+        };
+    </script>
 </head>
 <body>
     <div class="store-center-container">
@@ -507,6 +525,7 @@
         </div>
     </div>
 
+    <script src="firebase-manager.js"></script>
     <script src="store-center.js"></script>
 </body>
 </html>

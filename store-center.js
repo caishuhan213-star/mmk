@@ -2,9 +2,55 @@
 
 class StoreCenterManager {
     constructor() {
-        this.stores = this.loadStores();
+        this.stores = [];
         this.editingStoreId = null;
+        this.firebaseManager = null;
+        this.syncEnabled = false;
+        
+        // 初始化Firebase管理器
+        this.initFirebase();
+        
+        // 加载店铺数据
+        this.loadStores();
+        
         this.init();
+    }
+
+    // 初始化Firebase
+    initFirebase() {
+        console.log('初始化Firebase同步...');
+        // 检查是否已登录
+        if (window.firebaseManager) {
+            this.firebaseManager = window.firebaseManager;
+            const status = this.firebaseManager.getSyncStatus();
+            if (status.authenticated) {
+                this.syncEnabled = true;
+                console.log('✅ Firebase同步已启用，用户已登录');
+            } else {
+                console.log('⚠️ Firebase同步已就绪，但用户未登录');
+            }
+        } else {
+            console.warn('⚠️ Firebase管理器未找到，店铺数据将仅本地存储');
+        }
+        
+        // 监听认证状态变化
+        if (this.firebaseManager) {
+            // 每5秒检查一次登录状态
+            setInterval(() => {
+                if (this.firebaseManager) {
+                    const status = this.firebaseManager.getSyncStatus();
+                    const wasEnabled = this.syncEnabled;
+                    this.syncEnabled = status.authenticated;
+                    if (this.syncEnabled && !wasEnabled) {
+                        console.log('✅ 用户已登录，启用店铺数据同步');
+                        // 用户刚登录，从云端同步店铺数据
+                        this.syncStoresFromCloud();
+                    } else if (!this.syncEnabled && wasEnabled) {
+                        console.log('🔴 用户已登出，禁用店铺数据同步');
+                    }
+                }
+            }, 5000);
+        }
     }
 
     // 初始化
@@ -15,13 +61,125 @@ class StoreCenterManager {
 
     // 加载店铺列表
     loadStores() {
+        console.log('加载店铺列表...');
+        // 先从本地加载
         const data = localStorage.getItem('stores');
-        return data ? JSON.parse(data) : [];
+        this.stores = data ? JSON.parse(data) : [];
+        console.log(`从本地加载 ${this.stores.length} 个店铺`);
+        
+        // 如果Firebase同步已启用，尝试从云端加载
+        if (this.syncEnabled && this.firebaseManager) {
+            console.log('尝试从Firebase加载店铺数据...');
+            this.syncStoresFromCloud();
+        }
+        
+        return this.stores;
     }
 
     // 保存店铺列表
     saveStores() {
+        console.log('保存店铺列表...');
         localStorage.setItem('stores', JSON.stringify(this.stores));
+        console.log(`已保存 ${this.stores.length} 个店铺到本地`);
+        
+        // 如果Firebase同步已启用，同步到云端
+        if (this.syncEnabled && this.firebaseManager) {
+            this.syncStoresToCloud();
+        }
+    }
+
+    // 同步店铺数据到云端
+    async syncStoresToCloud() {
+        if (!this.syncEnabled || !this.firebaseManager || !this.firebaseManager.firestore) {
+            console.log('Firebase未就绪，跳过店铺数据同步到云端');
+            return;
+        }
+        
+        try {
+            console.log('开始同步店铺数据到Firebase...');
+            const userId = this.firebaseManager.user.uid;
+            const storeRef = this.firebaseManager.firestore.collection(`users/${userId}/stores`);
+            
+            // 使用批处理
+            const batch = this.firebaseManager.firestore.batch();
+            
+            // 同步每个店铺
+            this.stores.forEach(store => {
+                const docRef = storeRef.doc(store.id);
+                batch.set(docRef, {
+                    ...store,
+                    userId: userId,
+                    syncedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: new Date().toISOString()
+                });
+            });
+            
+            await batch.commit();
+            console.log(`✅ 店铺数据同步成功: ${this.stores.length}个店铺`);
+        } catch (error) {
+            console.error('❌ 店铺数据同步失败:', error);
+        }
+    }
+
+    // 从云端同步店铺数据
+    async syncStoresFromCloud() {
+        if (!this.syncEnabled || !this.firebaseManager || !this.firebaseManager.firestore) {
+            console.log('Firebase未就绪，跳过从云端加载店铺数据');
+            return;
+        }
+        
+        try {
+            console.log('从Firebase加载店铺数据...');
+            const userId = this.firebaseManager.user.uid;
+            const storeRef = this.firebaseManager.firestore.collection(`users/${userId}/stores`);
+            const querySnapshot = await storeRef.get();
+            
+            if (querySnapshot.empty) {
+                console.log('云端没有店铺数据');
+                return;
+            }
+            
+            const cloudStores = [];
+            querySnapshot.forEach(doc => {
+                const data = doc.data();
+                // 移除Firebase特有的字段
+                const { userId, syncedAt, updatedAt, ...store } = data;
+                cloudStores.push(store);
+            });
+            
+            console.log(`从云端加载到 ${cloudStores.length} 个店铺`);
+            
+            // 合并数据（云端优先）
+            const mergedStores = this.mergeStores(this.stores, cloudStores);
+            
+            if (JSON.stringify(mergedStores) !== JSON.stringify(this.stores)) {
+                console.log('店铺数据有更新，更新本地存储');
+                this.stores = mergedStores;
+                localStorage.setItem('stores', JSON.stringify(this.stores));
+                this.renderStoreGrid();
+                this.updateOverviewStats();
+                console.log('✅ 店铺数据已从云端更新');
+            } else {
+                console.log('店铺数据与云端一致，无需更新');
+            }
+        } catch (error) {
+            console.error('❌ 从云端加载店铺数据失败:', error);
+        }
+    }
+
+    // 合并店铺数据（云端优先）
+    mergeStores(localStores, cloudStores) {
+        const merged = [...cloudStores]; // 云端优先
+        
+        // 添加本地有但云端没有的店铺（根据ID）
+        localStores.forEach(localStore => {
+            const exists = merged.some(cloudStore => cloudStore.id === localStore.id);
+            if (!exists) {
+                merged.push(localStore);
+            }
+        });
+        
+        return merged;
     }
 
     // 渲染店铺网格
