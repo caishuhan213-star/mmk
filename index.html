@@ -44,6 +44,14 @@
                     <button id="backToStoreCenter" class="btn btn-secondary" style="display: none;">
                         🏢 返回店铺中心
                     </button>
+                    <!-- Google登录 -->
+                    <button id="googleLoginBtn" class="btn btn-secondary" style="display: none; margin-left: 10px;">
+                        🔐 Google登录
+                    </button>
+                    <span id="userInfo" style="display: none; margin-left: 10px; padding: 4px 8px; background: #e6f7ff; border-radius: 4px; font-size: 12px;"></span>
+                    <button id="logoutBtn" class="btn btn-secondary" style="display: none; margin-left: 5px;">
+                        登出
+                    </button>
                 </div>
             </div>
         </header>
@@ -1857,6 +1865,39 @@
         </div>
     </div>
 
+    <script>
+        // Google登录事件监听器
+        document.addEventListener("DOMContentLoaded", function() {
+            const googleLoginBtn = document.getElementById("googleLoginBtn");
+            const logoutBtn = document.getElementById("logoutBtn");
+            
+            if (googleLoginBtn) {
+                googleLoginBtn.addEventListener("click", function() {
+                    if (window.firebaseManager) {
+                        window.firebaseManager.signInWithGoogle();
+                    } else {
+                        console.error("firebaseManager not found");
+                        alert("Firebase管理器未初始化，请刷新页面重试");
+                    }
+                });
+            }
+            
+            if (logoutBtn) {
+                logoutBtn.addEventListener("click", function() {
+                    if (window.firebaseManager && confirm("确定要登出吗？")) {
+                        window.firebaseManager.signOut();
+                    }
+                });
+            }
+            
+            // 初始化时更新UI（如果FirebaseManager已存在）
+            setTimeout(() => {
+                if (window.firebaseManager) {
+                    window.firebaseManager.updateLoginUI();
+                }
+            }, 2000);
+        });
+    </script>
     <script src="script-clean.js?v=1772539869"></script>
     <script src="firebase-manager.js"></script>
     <script src="indexeddb-firebase-sync.js"></script>

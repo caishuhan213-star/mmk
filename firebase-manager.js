@@ -1,7 +1,7 @@
-// Firebase实时同步管理器 - Firebase v9兼容版本
+// Firebase实时同步管理器 - Firebase v9兼容版本（支持Google登录）
 class FirebaseManager {
     constructor() {
-        console.log('FirebaseManager v9构造函数调用');
+        console.log('FirebaseManager v9 Google登录版构造函数调用');
         this.firestore = null;
         this.auth = null;
         this.user = null;
@@ -9,8 +9,9 @@ class FirebaseManager {
         this.pendingSync = [];
         this.syncEnabled = true;
         this.syncStatus = 'disconnected';
+        this.googleProvider = null;
         
-        // 延迟初始化，避免阻塞页面加载
+        // 延迟初始化Firebase（但不自动登录）
         setTimeout(() => {
             this.initFirebase();
         }, 1000);
@@ -22,7 +23,7 @@ class FirebaseManager {
     
     // 初始化Firebase
     async initFirebase() {
-        console.log('开始初始化Firebase v9...');
+        console.log('开始初始化Firebase v9（Google登录版）...');
         
         // 检查Firebase SDK是否加载
         if (typeof firebase === "undefined") {
@@ -30,6 +31,7 @@ class FirebaseManager {
             this.syncStatus = "sdk-not-loaded";
             this.syncEnabled = false;
             this.showErrorStatus("SDK加载失败");
+            this.updateLoginUI(); // 更新登录UI
             return;
         }
         
@@ -41,6 +43,7 @@ class FirebaseManager {
                 console.error('❌ Firebase配置缺失');
                 this.syncStatus = 'config-error';
                 this.showErrorStatus("配置错误");
+                this.updateLoginUI();
                 return;
             }
             
@@ -68,44 +71,145 @@ class FirebaseManager {
             this.firestore = firebase.firestore();
             this.auth = firebase.auth();
             
-            console.log('✅ Firestore和Auth实例已获取');
+            // 创建Google登录提供方
+            this.googleProvider = new firebase.auth.GoogleAuthProvider();
+            // 可选：添加scope
+            this.googleProvider.addScope('profile');
+            this.googleProvider.addScope('email');
+            
+            console.log('✅ Firestore、Auth实例和Google提供方已获取');
             
             // 设置初始状态
             this.syncStatus = 'connected';
             this.showSyncStatus();
             
-            // 尝试匿名登录
-            this.signInAnonymously();
+            // 监听认证状态变化
+            this.auth.onAuthStateChanged((user) => {
+                this.handleAuthStateChanged(user);
+            });
+            
+            // 更新登录UI
+            this.updateLoginUI();
             
         } catch (error) {
             console.error('❌ Firebase初始化失败:', error);
             this.syncStatus = 'error';
             this.showErrorStatus("初始化失败");
+            this.updateLoginUI();
         }
     }
     
-    // 匿名登录
-    async signInAnonymously() {
-        if (!this.auth) {
-            console.warn('Auth未初始化，跳过匿名登录');
-            return;
-        }
+    // 处理认证状态变化
+    handleAuthStateChanged(user) {
+        console.log('认证状态变化:', user ? `用户已登录 (${user.email})` : '用户未登录');
+        this.user = user;
         
-        try {
-            const userCredential = await this.auth.signInAnonymously();
-            this.user = userCredential.user;
-            console.log('✅ 匿名登录成功，用户ID:', this.user.uid.substring(0, 8) + '...');
+        if (user) {
+            // 用户已登录
+            console.log('✅ Google登录成功，用户:', user.email);
+            console.log('用户ID:', user.uid.substring(0, 8) + '...');
             this.syncStatus = 'authenticated';
             this.showSyncStatus();
             
             // 测试Firestore连接
             this.testFirestoreConnection();
+        } else {
+            // 用户未登录
+            this.syncStatus = 'connected';
+            this.showSyncStatus();
+        }
+        
+        // 更新登录UI
+        this.updateLoginUI();
+    }
+    
+    // Google登录
+    async signInWithGoogle() {
+        if (!this.auth) {
+            console.error('❌ Auth未初始化');
+            this.showErrorStatus("认证未初始化");
+            return;
+        }
+        
+        try {
+            console.log('开始Google登录...');
+            this.syncStatus = 'signing-in';
+            this.showSyncStatus();
+            
+            const result = await this.auth.signInWithPopup(this.googleProvider);
+            console.log('✅ Google登录成功');
+            
+            // handleAuthStateChanged会自动调用，所以这里不需要额外处理
             
         } catch (error) {
-            console.error('❌ 匿名登录失败:', error);
+            console.error('❌ Google登录失败:', error);
+            
+            // 处理特定错误
+            let errorMessage = "登录失败";
+            if (error.code === 'auth/popup-blocked') {
+                errorMessage = "弹窗被阻止，请允许弹窗或使用重定向登录";
+            } else if (error.code === 'auth/popup-closed-by-user') {
+                errorMessage = "登录弹窗被关闭";
+            } else if (error.code === 'auth/cancelled-popup-request') {
+                errorMessage = "登录请求被取消";
+            } else if (error.code === 'auth/unauthorized-domain') {
+                errorMessage = "未授权的域名，请在Firebase控制台添加当前域名";
+            }
+            
             this.syncStatus = 'auth-error';
-            this.showErrorStatus("登录失败");
+            this.showErrorStatus(errorMessage);
+            this.updateLoginUI();
         }
+    }
+    
+    // 登出
+    async signOut() {
+        if (!this.auth) {
+            console.warn('Auth未初始化，无法登出');
+            return;
+        }
+        
+        try {
+            await this.auth.signOut();
+            console.log('✅ 已登出');
+            // handleAuthStateChanged会自动处理
+        } catch (error) {
+            console.error('❌ 登出失败:', error);
+        }
+    }
+    
+    // 更新登录UI
+    updateLoginUI() {
+        // 延迟执行以确保DOM已加载
+        setTimeout(() => {
+            const loginButton = document.getElementById('googleLoginBtn');
+            const userInfo = document.getElementById('userInfo');
+            const logoutButton = document.getElementById('logoutBtn');
+            
+            if (!loginButton || !userInfo || !logoutButton) {
+                // 如果UI元素不存在，可能还没有创建，稍后重试
+                return;
+            }
+            
+            if (this.user) {
+                // 用户已登录
+                loginButton.style.display = 'none';
+                userInfo.style.display = 'inline-block';
+                logoutButton.style.display = 'inline-block';
+                
+                // 显示用户邮箱（前部分）
+                const email = this.user.email;
+                const displayEmail = email.length > 20 ? email.substring(0, 20) + '...' : email;
+                userInfo.textContent = `👤 ${displayEmail}`;
+                userInfo.title = `已登录: ${email}`;
+                
+            } else {
+                // 用户未登录
+                loginButton.style.display = 'inline-block';
+                userInfo.style.display = 'none';
+                logoutButton.style.display = 'none';
+            }
+        }, 100);
     }
     
     // 测试Firestore连接
@@ -122,7 +226,8 @@ class FirebaseManager {
             await testRef.set({
                 test: true,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                userId: this.user.uid
+                userId: this.user.uid,
+                email: this.user.email
             });
             
             console.log('✅ Firestore连接测试成功');
@@ -149,7 +254,7 @@ class FirebaseManager {
     handleNetworkOnline() {
         console.log('网络已恢复');
         this.isOnline = true;
-        this.syncStatus = 'connected';
+        this.syncStatus = this.user ? 'authenticated' : 'connected';
         this.showSyncStatus();
     }
     
@@ -198,11 +303,15 @@ class FirebaseManager {
                 statusClass = 'sync-status-error';
                 break;
             case 'connected':
-                statusText = '🟡 连接中...';
+                statusText = '🔵 已连接（请登录）';
+                statusClass = 'sync-status-offline';
+                break;
+            case 'signing-in':
+                statusText = '🟡 登录中...';
                 statusClass = 'sync-status-syncing';
                 break;
             case 'authenticated':
-                statusText = '🟡 认证完成';
+                statusText = '🟡 已认证';
                 statusClass = 'sync-status-syncing';
                 break;
             case 'ready':
@@ -242,9 +351,14 @@ class FirebaseManager {
             online: this.isOnline,
             authenticated: !!this.user,
             pendingSync: this.pendingSync.length,
-            userId: this.user ? this.user.uid : null
+            userId: this.user ? this.user.uid : null,
+            userEmail: this.user ? this.user.email : null
         };
     }
+    
+    // ======================
+    // 以下同步方法与原始版本相同
+    // ======================
     
     // 同步排班数据到云端
     async syncSchedules(schedules, storeId = 'default') {
@@ -310,10 +424,6 @@ class FirebaseManager {
             return null;
         }
     }
-    
-    // ======================
-    // 通用同步方法（新增）
-    // ======================
     
     // 通用同步方法：同步任意集合到云端
     async syncCollection(collectionName, dataArray, storeId = 'default') {
@@ -416,3 +526,6 @@ class FirebaseManager {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 }
+
+// 创建全局实例
+window.firebaseManager = new FirebaseManager();

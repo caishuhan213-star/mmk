@@ -6,27 +6,101 @@ class IndexedDBManagerWithFirebase extends IndexedDBManager {
         super();
         console.log('IndexedDBManagerWithFirebase 初始化');
         
-        // 初始化Firebase管理器
-        this.firebaseManager = new FirebaseManager();
+        // 使用全局Firebase管理器实例
+        this.firebaseManager = window.firebaseManager;
+        if (!this.firebaseManager) {
+            console.warn('⚠️ 全局firebaseManager未找到，将创建新实例');
+            this.firebaseManager = new FirebaseManager();
+            window.firebaseManager = this.firebaseManager;
+        }
         
-        // 同步设置
-        this.syncEnabled = true;
+        // 同步设置 - 初始禁用，等待用户登录
+        this.syncEnabled = false;
         this.syncQueue = [];
         this.isSyncing = false;
         this.realtimeListeners = new Map(); // 存储实时监听器
+        this.syncInterval = null;
         
-        // 延迟启动同步和监听（等待Firebase初始化）
-        setTimeout(() => {
+        // 监听登录状态变化
+        this.setupAuthStateListener();
+    }
+    
+    // 设置认证状态监听器
+    setupAuthStateListener() {
+        // 检查firebaseManager是否就绪
+        if (!this.firebaseManager) {
+            console.warn('firebaseManager未就绪，延迟设置认证监听器');
+            setTimeout(() => this.setupAuthStateListener(), 2000);
+            return;
+        }
+        
+        console.log('设置认证状态监听器');
+        
+        // 初始检查
+        this.checkAuthState();
+        
+        // 定期检查认证状态（因为Firebase的onAuthStateChanged可能不会触发自定义事件）
+        this.authCheckInterval = setInterval(() => {
+            this.checkAuthState();
+        }, 5000);
+    }
+    
+    // 检查认证状态
+    checkAuthState() {
+        if (!this.firebaseManager) return;
+        
+        const status = this.firebaseManager.getSyncStatus();
+        const isAuthenticated = status.authenticated;
+        
+        if (isAuthenticated && !this.syncEnabled) {
+            // 用户已登录，启用同步
+            console.log('✅ 用户已登录，启用Firebase同步');
+            this.syncEnabled = true;
             this.startSyncInterval();
             this.startRealtimeListeners();
-        }, 3000);
+        } else if (!isAuthenticated && this.syncEnabled) {
+            // 用户已登出，禁用同步
+            console.log('🔴 用户已登出，禁用Firebase同步');
+            this.syncEnabled = false;
+            this.stopSyncInterval();
+            this.stopRealtimeListeners();
+        }
+    }
+    
+    // 停止定时同步
+    stopSyncInterval() {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+            this.syncInterval = null;
+            console.log('已停止定时同步');
+        }
+    }
+    
+    // 停止实时监听
+    stopRealtimeListeners() {
+        this.realtimeListeners.forEach((unsubscribe, key) => {
+            try {
+                unsubscribe();
+                console.log(`已停止监听: ${key}`);
+            } catch (error) {
+                console.error(`停止监听${key}失败:`, error);
+            }
+        });
+        this.realtimeListeners.clear();
     }
     
     // 启动定时同步
     startSyncInterval() {
+        // 如果已经启动，则不再启动
+        if (this.syncInterval) {
+            console.log('定时同步已启动，跳过');
+            return;
+        }
+        
+        console.log('启动定时同步（每60秒检查一次）');
         // 每60秒检查一次同步
-        setInterval(() => {
-            if (this.syncQueue.length > 0 && !this.isSyncing) {
+        this.syncInterval = setInterval(() => {
+            if (this.syncEnabled && this.syncQueue.length > 0 && !this.isSyncing) {
                 this.processSyncQueue();
             }
         }, 60000);
